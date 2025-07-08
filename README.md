@@ -1,71 +1,83 @@
 # File Renamer
 
-A command-line tool for renaming files and directories using regular expressions.
+A command-line tool for renaming files and directories using regular expressions or common case conversions.
 
 ## Description
 
-This script allows you to rename files and directories by matching a regex pattern and replacing it with a specified string. It can process individual files or recursively traverse directories.
+This script allows you to rename files and directories by either matching a regex pattern or by applying a case conversion (lowercase, uppercase, or capitalize). It can process individual files or recursively traverse directories.
 
 ## Installation
 
-1.  **Create a new Rust project:**
-
+1.  **Install Rust:** If you don't have Rust, install it from [rust-lang.org](https://www.rust-lang.org/).
+2.  **Compile the project:**
     ```bash
-    cargo new renamer
+    git clone <repository_url>
     cd renamer
+    cargo build --release
     ```
+3.  **Install the command (Optional):** To make `renamer` available system-wide, move the executable to a directory in your `PATH`.
+    ```bash
+    # For the current user
+    mv target/release/renamer ~/.local/bin/
 
-2.  **Add dependencies:**
-
-    Add the following lines to your `Cargo.toml` file:
-
-    ```toml
-    [dependencies]
-    anyhow = "1.0"
-    clap = { version = "4.0", features = ["derive"] }
-    regex = "1.5"
+    # Or for all users
+    sudo mv target/release/renamer /usr/local/bin/
     ```
-
-3.  **Add the code:**
-
-    Copy the provided Rust code into `src/main.rs`.
 
 ## Usage
 
-Run the script from your terminal using `cargo run`:
+The tool uses subcommands to determine the renaming operation.
 
 ```bash
-cargo run -- -p <pattern> -r <replacement> <path(s)>
+renamer [COMMAND] [OPTIONS] [PATHS]...
 ```
 
-### Arguments
+### Commands
 
-*   `-p, --pattern <PATTERN>`: The regex pattern to search for in filenames.
-*   `-r, --replacement <REPLACEMENT>`: The string to replace the matched pattern with.
-*   `<PATHS>`: One or more files or directories to process.
+*   `regex`: Rename files using a regular expression.
+*   `lowercase`: Convert filenames to lowercase.
+*   `uppercase`: Convert filenames to uppercase.
+*   `capitalize`: Capitalize filenames (e.g., `my file.txt` -> `My file.txt`).
+
+### Shared Options
+
+These options can be used with any of the commands.
+
+*   `--verbose`, `-v`: Enable verbose output, showing which files are being processed.
+*   `--dry-run`: Show what changes would be made without actually renaming any files.
+*   `--force`: Forcefully overwrite existing files if a name collision occurs.
+*   `--auto-number`: If a name collision occurs, automatically append a number to the new filename (e.g., `file(1).txt`). This cannot be used with `--force`.
 
 ## Examples
 
-### Rename file extensions
+### Regex Rename
 
-To rename all `.txt` files to `.md` in the `my_docs` directory:
+To replace all spaces with underscores in the `project_files` directory:
 
 ```bash
-cargo run -- -p "\.txt$" -r ".md" my_docs
+renamer regex --pattern " " --replacement "_" ./project_files
 ```
 
-### Add a prefix to filenames
+### Lowercase Conversion
 
-To add the prefix `new_` to all files in the current directory:
+To convert all filenames in the current directory to lowercase:
 
 ```bash
-cargo run -- -p "^" -r "new_" .
+renamer lowercase .
 ```
 
-### Replace spaces with underscores
+### Uppercase with a Dry Run
 
-To replace all spaces with underscores in filenames within the `project_files` directory:
+To see what would happen when converting all `.jpg` files to uppercase, without actually changing them:
 
 ```bash
-cargo run -- -p " " -r "_" project_files
+renamer uppercase --dry-run ./*.jpg
+```
+
+### Capitalize with Auto-Numbering
+
+To capitalize all files in `~/Documents` and automatically handle any name collisions:
+
+```bash
+renamer capitalize --auto-number ~/Documents
 ```

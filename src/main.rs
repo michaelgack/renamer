@@ -1,20 +1,52 @@
-use anyhow::{Context, Result};
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use regex::Regex;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+use std::process::ExitCode;
+
+// Use the library crate
+use renamer::{run, Config, RenameMode};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    /// The regex pattern to search for in filenames
-    #[arg(short, long)]
-    pattern: String,
+    #[command(subcommand)]
+    command: Commands,
+}
 
-    /// The replacement string
-    #[arg(short, long)]
-    replacement: String,
+#[derive(Subcommand)]
+enum Commands {
+    /// Rename files using a regular expression
+    Regex {
+        /// The regex pattern to search for
+        #[arg(short, long)]
+        pattern: String,
 
+        /// The replacement string
+        #[arg(short, long)]
+        replacement: String,
+
+        #[command(flatten)]
+        args: SharedArgs,
+    },
+    /// Convert filenames to lowercase
+    Lowercase {
+        #[command(flatten)]
+        args: SharedArgs,
+    },
+    /// Convert filenames to uppercase
+    Uppercase {
+        #[command(flatten)]
+        args: SharedArgs,
+    },
+    /// Capitalize filenames
+    Capitalize {
+        #[command(flatten)]
+        args: SharedArgs,
+    },
+}
+
+#[derive(Parser)]
+struct SharedArgs {
     /// The files or directories to process
     #[arg(required = true)]
     paths: Vec<PathBuf>,
@@ -26,70 +58,54 @@ struct Cli {
     /// Perform a dry run without actually renaming files
     #[arg(long)]
     dry_run: bool,
+
+    /// Overwrite existing files
+    #[arg(long)]
+    force: bool,
+
+    /// Automatically number files to resolve conflicts
+    #[arg(long, conflicts_with = "force")]
+    auto_number: bool,
 }
 
-fn main() -> Result<()> {
+fn main() -> ExitCode {
     let cli = Cli::parse();
-    let re = Regex::new(&cli.pattern).context("Failed to compile regex pattern")?;
 
-    if cli.dry_run {
-        println!("*** DRY RUN MODE ENABLED ***");
-    }
-
-    for path in &cli.paths {
-        process_path(path, &re, &cli.replacement, cli.verbose, cli.dry_run);
-    }
-
-    Ok(())
-}
-
-fn process_path(path: &Path, re: &Regex, replacement: &str, verbose: bool, dry_run: bool) {
-    if path.is_dir() {
-        match fs::read_dir(path) {
-            Ok(entries) => {
-                for entry in entries {
-                    match entry {
-                        Ok(entry) => process_path(&entry.path(), re, replacement, verbose, dry_run),
-                        Err(e) => eprintln!("Error reading directory entry in {:?}: {}", path, e),
-                    }
+    let (args, mode) = match cli.command {
+        Commands::Regex {
+            pattern,
+            replacement,
+            args,
+        } => {
+            let re = match Regex::new(&pattern) {
+                Ok(re) => re,
+                Err(e) => {
+                    eprintln!("Invalid regex: {}", e);
+                    return ExitCode::FAILURE;
                 }
-            }
-            Err(e) => eprintln!("Error reading directory {:?}: {}", path, e),
+            };
+            (args, RenameMode::Regex(re, replacement))
         }
-    } else if path.is_file() {
-        if let Err(e) = process_file(path, re, replacement, verbose, dry_run) {
-            eprintln!("Error processing file {:?}: {}", path, e);
-        }
-    } else if verbose {
-        println!("Skipping non-file/directory: {:?}", path);
-    }
-}
-
-fn process_file(path: &Path, re: &Regex, replacement: &str, verbose: bool, dry_run: bool) -> Result<()> {
-    let filename = match path.file_name() {
-        Some(name) => name.to_string_lossy(),
-        None => {
-            if verbose {
-                println!("Skipping path with no filename: {:?}", path);
-            }
-            return Ok(());
-        }
+        Commands::Lowercase { args } => (args, RenameMode::Lowercase),
+        Commands::Uppercase { args } => (args, RenameMode::Uppercase),
+        Commands::Capitalize { args } => (args, RenameMode::Capitalize),
     };
 
-    let new_filename = re.replace_all(&filename, replacement);
+    let config = Config {
+        mode,
+        paths: args.paths,
+        verbose: args.verbose,
+        dry_run: args.dry_run,
+        force: args.force,
+        auto_number: args.auto_number,
+    };
 
-    if new_filename != filename {
-        let new_path = path.with_file_name(new_filename.as_ref());
-        if dry_run {
-            println!("[DRY RUN] Would rename {:?} to {:?}", path, new_path);
-        } else {
-            println!("Renaming {:?} to {:?}", path, new_path);
-            fs::rename(path, &new_path)
-                .with_context(|| format!("Failed to rename {:?} to {:?}", path, new_path))?;
+    if let Err(errors) = run(&config) {
+        for error in errors {
+            eprintln!("Error: {}", error);
         }
-    } else if verbose {
-        println!("No changes for {:?}", path);
+        std::process::exit(1);
     }
 
-    Ok(())
+    ExitCode::SUCCESS
 }
