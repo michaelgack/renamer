@@ -69,3 +69,5 @@ To replace all spaces with underscores in filenames within the `project_files` d
 ```bash
 cargo run -- -p " " -r "_" project_files
 ```
+
+_author: Michael Gack (08.07.2025)_
